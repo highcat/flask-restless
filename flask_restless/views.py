@@ -1091,8 +1091,11 @@ class API(ModelView):
             return jsonify(message='Unable to decode data'), 400
 
         # apply any preprocessors to the POST arguments
-        for preprocessor in self.preprocessors['POST']:
-            preprocessor(data=params)
+        try:
+            for preprocessor in self.preprocessors['POST']:
+                preprocessor(data=params)
+        except self.validation_exceptions as exception:
+            return self._handle_validation_exception(exception)
 
         # Check for any request parameter naming a column which does not exist
         # on the current model.
@@ -1199,15 +1202,18 @@ class API(ModelView):
 
         patchmany = instid is None
         # Perform any necessary preprocessing.
-        if patchmany:
-            # Get the search parameters; all other keys in the `data`
-            # dictionary indicate a change in the model's field.
-            search_params = data.pop('q', {})
-            for preprocessor in self.preprocessors['PATCH_MANY']:
-                preprocessor(search_params=search_params, data=data)
-        else:
-            for preprocessor in self.preprocessors['PATCH_SINGLE']:
-                preprocessor(instance_id=instid, data=data)
+        try:
+            if patchmany:
+                # Get the search parameters; all other keys in the `data`
+                # dictionary indicate a change in the model's field.
+                search_params = data.pop('q', {})
+                for preprocessor in self.preprocessors['PATCH_MANY']:
+                    preprocessor(search_params=search_params, data=data)
+            else:
+                for preprocessor in self.preprocessors['PATCH_SINGLE']:
+                    preprocessor(instance_id=instid, data=data)
+        except self.validation_exceptions as exception:
+            return self._handle_validation_exception(exception)
 
         # Check for any request parameter naming a column which does not exist
         # on the current model.
