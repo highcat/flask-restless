@@ -1055,7 +1055,7 @@ class API(ModelView):
             self.session.commit()
             is_deleted = True
         for postprocessor in self.postprocessors['DELETE']:
-            postprocessor(is_deleted=is_deleted)
+            postprocessor(is_deleted=is_deleted, instance_id=instid)
         return jsonify(), 204
 
     def post(self):
