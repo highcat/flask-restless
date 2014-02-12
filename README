@@ -17,6 +17,9 @@ Consequences:
 
  * Control over transactions, `DELETE` method (commonly it sets `deleted` flag, not removes an object),
    database row locking.
+   
+ * Never create/update/delete relations automatically - it's too complex. Plain structure only.
+   Relations can be unrolled in `GET` calls, though.
 
 
 ## Introduction ##
