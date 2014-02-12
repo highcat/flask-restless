@@ -1,5 +1,24 @@
 # Flask-Restless #
 
+This is redesign fork of Flask-Restless.
+
+The ideology of the redesign:
+
+ * It should be a framework for real-life public RESTful APIs.
+
+Consequences:
+
+ * Main storage backend is SQLAlchemy.
+
+ * API methods can cause complex side effects.
+
+ * It should be possible to implement any RESTful API design with current framework.
+   Design should not depend on framework constraints.
+
+ * Control over transactions, `DELETE` method (commonly it sets `deleted` flag, not removes an object),
+   database row locking.
+
+
 ## Introduction ##
 
 This is Flask-Restless, a [Flask][1] extension which facilitates the creation
