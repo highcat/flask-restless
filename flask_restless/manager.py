@@ -93,9 +93,9 @@ class APIManager(object):
     BLUEPRINTNAME_FORMAT = '{0}{1}'
 
     def __init__(self, app=None, session=None, flask_sqlalchemy_db=None,
-                 preprocessors=None, postprocessors=None):
-        self.init_app(app, session, flask_sqlalchemy_db, preprocessors,
-                      postprocessors)
+                 preprocessors=None, sideeffects=None, postprocessors=None):
+        self.init_app(app, session, flask_sqlalchemy_db,
+                      preprocessors, sideeffects, postprocessors)
 
     def _next_blueprint_name(self, basename):
         """Returns the next name for a blueprint with the specified base name.
@@ -125,7 +125,7 @@ class APIManager(object):
         return APIManager.BLUEPRINTNAME_FORMAT.format(basename, next_number)
 
     def init_app(self, app, session=None, flask_sqlalchemy_db=None,
-                 preprocessors=None, postprocessors=None):
+                 preprocessors=None, sideeffects=None, postprocessors=None):
         """Stores the specified :class:`flask.Flask` application object on
         which API endpoints will be registered and the
         :class:`sqlalchemy.orm.session.Session` object in which all database
@@ -193,6 +193,7 @@ class APIManager(object):
         self.app = app
         self.session = session or getattr(flask_sqlalchemy_db, 'session', None)
         self.universal_preprocessors = preprocessors or {}
+        self.universal_sideeffects = sideeffects or {}        
         self.universal_postprocessors = postprocessors or {}
 
     def create_api_blueprint(self, model, methods=READONLY_METHODS,
@@ -202,7 +203,7 @@ class APIManager(object):
                              include_methods=None, validation_exceptions=None,
                              results_per_page=10, max_results_per_page=100,
                              post_form_preprocessor=None,
-                             preprocessors=None, postprocessors=None):
+                             preprocessors=None, sideeffects=None, postprocessors=None):
         """Creates an returns a ReSTful API interface as a blueprint, but does
         not register it on any :class:`flask.Flask` application.
 
@@ -396,11 +397,15 @@ class APIManager(object):
         # Prepend the universal preprocessors and postprocessors specified in
         # the constructor of this class.
         preprocessors_ = defaultdict(list)
+        sideeffects_ = defaultdict(list)        
         postprocessors_ = defaultdict(list)
         preprocessors_.update(preprocessors or {})
+        sideeffects_.update(sideeffects or {})
         postprocessors_.update(postprocessors or {})
         for key, value in self.universal_preprocessors.items():
             preprocessors_[key] = value + preprocessors_[key]
+        for key, value in self.universal_sideeffects.items():
+            sideeffects_[key] = value + sideeffects_[key]
         for key, value in self.universal_postprocessors.items():
             postprocessors_[key] = value + postprocessors_[key]
         # the view function for the API for this model
@@ -408,7 +413,7 @@ class APIManager(object):
                                include_columns, include_methods,
                                validation_exceptions, results_per_page,
                                max_results_per_page, post_form_preprocessor,
-                               preprocessors_, postprocessors_)
+                               preprocessors_, sideeffects_, postprocessors_)
         # suffix an integer to apiname according to already existing blueprints
         blueprintname = self._next_blueprint_name(apiname)
         # add the URL rules to the blueprint: the first is for methods on the
@@ -423,8 +428,7 @@ class APIManager(object):
                                methods=no_instance_methods, view_func=api_view)
         # For example, /api/person/1.
         blueprint.add_url_rule(collection_endpoint,
-                               defaults={'instid': None, 'relationname': None,
-                                         'relationinstid': None},
+                               defaults={'instid': None},
                                methods=possibly_empty_instance_methods,
                                view_func=api_view)
         # the per-instance endpoints will allow both integer and string primary
@@ -432,22 +436,22 @@ class APIManager(object):
         instance_endpoint = '{0}/<instid>'.format(collection_endpoint)
         # For example, /api/person/1.
         blueprint.add_url_rule(instance_endpoint, methods=instance_methods,
-                               defaults={'relationname': None,
-                                         'relationinstid': None},
+                               defaults={},
                                view_func=api_view)
         # add endpoints which expose related models
         relation_endpoint = '{0}/<relationname>'.format(instance_endpoint)
-        relation_instance_endpoint = \
-            '{0}/<relationinstid>'.format(relation_endpoint)
+        # relation_instance_endpoint = \
+        #   '{0}/<relationinstid>'.format(relation_endpoint)    # TODO remove ``relationinstid`` completely
         # For example, /api/person/1/computers.
         blueprint.add_url_rule(relation_endpoint,
                                methods=possibly_empty_instance_methods,
-                               defaults={'relationinstid': None},
+                               defaults={},
                                view_func=api_view)
-        # For example, /api/person/1/computers/2.
-        blueprint.add_url_rule(relation_instance_endpoint,
-                               methods=instance_methods,
-                               view_func=api_view)
+        # # For example, /api/person/1/computers/2.
+        # blueprint.add_url_rule(relation_instance_endpoint,
+        #                        methods=instance_methods,
+        #                        view_func=api_view)
+        
         # if function evaluation is allowed, add an endpoint at /api/eval/...
         # which responds only to GET requests and responds with the result of
         # evaluating functions on all instances of the specified model

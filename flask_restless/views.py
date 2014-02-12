@@ -396,7 +396,7 @@ class API(ModelView):
                  include_columns=None, include_methods=None,
                  validation_exceptions=None, results_per_page=10,
                  max_results_per_page=100, post_form_preprocessor=None,
-                 preprocessors=None, postprocessors=None, *args, **kw):
+                 preprocessors=None, sideeffects=None, postprocessors=None, *args, **kw):
         """Instantiates this view with the specified attributes.
 
         `session` is the SQLAlchemy session in which all database transactions
@@ -517,8 +517,10 @@ class API(ModelView):
         self.results_per_page = results_per_page
         self.max_results_per_page = max_results_per_page
         self.postprocessors = defaultdict(list)
+        self.sideeffects = defaultdict(list)        
         self.preprocessors = defaultdict(list)
         self.postprocessors.update(upper_keys(postprocessors or {}))
+        self.sideeffects.update(upper_keys(sideeffects or {}))
         self.preprocessors.update(upper_keys(preprocessors or {}))
         # move post_form_preprocessor to preprocessors['POST'] for backward
         # compatibility
@@ -531,12 +533,19 @@ class API(ModelView):
         # redirect to PATCH
         for postprocessor in self.postprocessors['PUT_SINGLE']:
             self.postprocessors['PATCH_SINGLE'].append(postprocessor)
+        for sideeffect in self.sideeffects['PUT_SINGLE']:
+            self.sideeffects['PATCH_SINGLE'].append(sideeffect)
         for preprocessor in self.preprocessors['PUT_SINGLE']:
             self.preprocessors['PATCH_SINGLE'].append(preprocessor)
+            
         for postprocessor in self.postprocessors['PUT_MANY']:
             self.postprocessors['PATCH_MANY'].append(postprocessor)
+        for sideeffect in self.sideeffects['PUT_MANY']:
+            self.sideeffects['PATCH_MANY'].append(sideeffect)
         for preprocessor in self.preprocessors['PUT_MANY']:
             self.preprocessors['PATCH_MANY'].append(preprocessor)
+
+            
 
     def _add_to_relation(self, query, relationname, toadd=None):
         """Adds a new or existing related model to each model specified by
@@ -963,11 +972,11 @@ class API(ModelView):
             headers = dict(Location=url)
 
         for postprocessor in self.postprocessors['GET_MANY']:
-            postprocessor(result=result, search_params=search_params)
+            postprocessor(result=result, search_params=search_params) # TODO pass query for simmetry
 
         return jsonpify(result, headers=headers)
 
-    def get(self, instid, relationname, relationinstid):
+    def get(self, instid):
         """Returns a JSON representation of an instance of model with the
         specified name.
 
@@ -989,33 +998,13 @@ class API(ModelView):
         instance = get_by(self.session, self.model, instid)
         if instance is None:
             abort(404)
-        # If no relation is requested, just return the instance. Otherwise,
-        # get the value of the relation specified by `relationname`.
-        if relationname is None:
-            result = self._inst_to_dict(instance)
-        else:
-            related_value = getattr(instance, relationname)
-            # create a placeholder for the relations of the returned models
-            related_model = get_related_model(self.model, relationname)
-            relations = frozenset(get_relations(related_model))
-            deep = dict((r, {}) for r in relations)
-            if relationinstid is not None:
-                related_value_instance = get_by(self.session, related_model,
-                                                relationinstid)
-                if related_value_instance is None:
-                    abort(404)
-                result = to_dict(related_value_instance, deep)
-            else:
-                # for security purposes, don't transmit list as top-level JSON
-                if is_like_list(instance, relationname):
-                    result = self._paginated(list(related_value), deep)
-                else:
-                    result = to_dict(related_value, deep)
+
+        result = self._inst_to_dict(instance)
         for postprocessor in self.postprocessors['GET_SINGLE']:
-            postprocessor(result=result)
+            postprocessor(instance=instance, result=result)
         return jsonpify(result)
 
-    def delete(self, instid, relationname, relationinstid):
+    def delete(self, instid):
         """Removes the specified instance of the model with the specified name
         from the database.
 
@@ -1032,30 +1021,18 @@ class API(ModelView):
            Added the `relationname` keyword argument.
 
         """
-        is_deleted = False
         for preprocessor in self.preprocessors['DELETE']:
-            preprocessor(instance_id=instid, relation_name=relationname,
-                         relation_instance_id=relationinstid)
+            preprocessor(instance_id=instid)
         inst = get_by(self.session, self.model, instid)
-        if relationname:
-            # If the request is ``DELETE /api/person/1/computers``, error 400.
-            if not relationinstid:
-                msg = ('Cannot DELETE entire "{0}"'
-                       ' relation').format(relationname)
-                return jsonify(message=msg), 400
-            # Otherwise, get the related instance to delete.
-            relation = getattr(inst, relationname)
-            related_model = get_related_model(self.model, relationname)
-            relation_instance = get_by(self.session, related_model,
-                                       relationinstid)
-            # Removes an object from the relation list.
-            relation.remove(relation_instance)
-        elif inst is not None:
-            self.session.delete(inst)
-            self.session.commit()
-            is_deleted = True
+
+        # if not self.suppress_default_operation
+        self.session.delete(inst)
+        for sideeffect in self.sideeffects['DELETE']:
+            sideeffect(instance=inst, instance_id=instid)
+        self.session.commit()
+
         for postprocessor in self.postprocessors['DELETE']:
-            postprocessor(is_deleted=is_deleted, instance_id=instid)
+            postprocessor(instance_id=instid)
         return jsonify(), 204
 
     def post(self):
@@ -1140,6 +1117,8 @@ class API(ModelView):
 
             # add the created model to the session
             self.session.add(instance)
+            for sideeffect in self.sideeffects['POST']:
+                sideeffect(instance=instance)
             self.session.commit()
             result = self._inst_to_dict(instance)
             primary_key = str(result[primary_key_name(instance)])
@@ -1152,7 +1131,7 @@ class API(ModelView):
             headers = dict(Location=url)
 
             for postprocessor in self.postprocessors['POST']:
-                postprocessor(result=result)
+                postprocessor(instance=instance, result=result)
 
             return jsonify(headers=headers, **result), 201
         except self.validation_exceptions as exception:
@@ -1161,7 +1140,7 @@ class API(ModelView):
             current_app.logger.exception(str(exception))
             return jsonify(message=str(exception)), 400
 
-    def patch(self, instid, relationname, relationinstid):
+    def patch(self, instid):
         """Updates the instance specified by ``instid`` of the named model, or
         updates multiple instances if ``instid`` is ``None``.
 
@@ -1251,7 +1230,6 @@ class API(ModelView):
                     for field, value in data.items():
                         setattr(item, field, value)
                     num_modified += 1
-            self.session.commit()
         except self.validation_exceptions as exception:
             current_app.logger.exception(str(exception))
             return self._handle_validation_exception(exception)
@@ -1259,6 +1237,15 @@ class API(ModelView):
             current_app.logger.exception(str(exception))
             return jsonify(message=str(exception)), 400
 
+        # Side effects
+        if patchmany:
+            for sideeffect in self.sideeffects['PATCH_MANY']:
+                sideeffect(query=query)
+        else:                
+            for sideeffect in self.sideeffects['PATCH_SINGLE']:
+                sideeffect(instance=query[0])
+        self.session.commit()
+        
         # Perform any necessary postprocessing.
         if patchmany:
             result = dict(num_modified=num_modified)
@@ -1268,7 +1255,7 @@ class API(ModelView):
         else:
             result = self._instid_to_dict(instid)
             for postprocessor in self.postprocessors['PATCH_SINGLE']:
-                postprocessor(result=result)
+                postprocessor(instance=query[0], result=result)
 
         return jsonify(result)
 
