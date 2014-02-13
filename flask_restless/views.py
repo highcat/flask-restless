@@ -114,7 +114,6 @@ def catch_processing_exceptions(func):
         try:
             return func(*args, **kw)
         except ProcessingException as exception:
-            current_app.logger.exception(str(exception))
             status, message = exception.code, str(exception)
             return jsonify(message=message), status
     return decorator
@@ -937,6 +936,10 @@ class API(ModelView):
             current_app.logger.exception(str(exception))
             return jsonify(message='Unable to construct query'), 400
 
+        # FIXME
+        for sideeffect in self.sideeffects['GET_MANY']:
+            sideeffect(query=result)
+
         # create a placeholder for the relations of the returned models
         relations = frozenset(get_relations(self.model))
         # do not follow relations that will not be included in the response
@@ -1003,6 +1006,8 @@ class API(ModelView):
         instance = get_by(self.session, self.model, instid)
         if instance is None:
             abort(404)
+        for sideeffect in self.sideeffects['GET_SINGLE']:
+            sideeffect(instance=instance)
 
         result = self._inst_to_dict(instance)
         for postprocessor in self.postprocessors['GET_SINGLE']:
