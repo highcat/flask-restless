@@ -197,7 +197,7 @@ class APIManager(object):
         self.universal_postprocessors = postprocessors or {}
 
     def create_api_blueprint(self, model, methods=READONLY_METHODS,
-                             url_prefix='/api', collection_name=None,
+                             url_prefix='/api', endpoint=None,
                              allow_patch_many=False, allow_functions=False,
                              exclude_columns=None, include_columns=None,
                              include_methods=None, validation_exceptions=None,
@@ -208,7 +208,7 @@ class APIManager(object):
         not register it on any :class:`flask.Flask` application.
 
         The endpoints for the API for ``model`` will be available at
-        ``<url_prefix>/<collection_name>``. If `collection_name` is ``None``,
+        ``<url_prefix>/<endpoint>``. If `endpoint` is ``None``,
         the lowercase name of the provided model class will be used instead, as
         accessed by ``model.__name__``. (If any black magic was performed on
         ``model.__name__``, this will be reflected in the endpoint URL.)
@@ -244,14 +244,14 @@ class APIManager(object):
         The default set of methods provides a read-only interface (that is,
         only :http:method:`get` requests are allowed).
 
-        `collection_name` is the name of the collection specified by the given
+        `endpoint` is the name of the collection specified by the given
         model class to be used in the URL for the ReSTful API created. If this
         is not specified, the lowercase name of the model will be used.
 
         `url_prefix` the URL prefix at which this API will be accessible.
 
         If `allow_patch_many` is ``True``, then requests to
-        :http:patch:`/api/<collection_name>?q=<searchjson>` will attempt to
+        :http:patch:`/api/<endpoint>?q=<searchjson>` will attempt to
         patch the attributes on each of the instances of the model which match
         the specified search query. This is ``False`` by default. For
         information on the search query parameter ``q``, see
@@ -263,7 +263,7 @@ class APIManager(object):
         more information on how to use validation, see :ref:`validation`.
 
         If `allow_functions` is ``True``, then requests to
-        :http:get:`/api/eval/<collection_name>` will return the result of
+        :http:get:`/api/eval/<endpoint>` will return the result of
         evaluating SQL functions specified in the body of the request. For
         information on the request format, see :ref:`functionevaluation`. This
         if ``False`` by default. Warning: you must not create an API for a
@@ -367,7 +367,7 @@ class APIManager(object):
         .. versionadded:: 0.4
            Added the `allow_functions`, `allow_patch_many`,
            `authentication_required_for`, `authentication_function`, and
-           `collection_name` keyword arguments.
+           `endpoint` keyword arguments.
 
         .. versionadded:: 0.4
            Force the model name in the URL to lowercase.
@@ -377,8 +377,8 @@ class APIManager(object):
             msg = ('Cannot simultaneously specify both include columns and'
                    ' exclude columns.')
             raise IllegalArgumentError(msg)
-        if collection_name is None:
-            collection_name = model.__tablename__
+        if endpoint is None:
+            endpoint = model.__tablename__
         # convert all method names to upper case
         methods = frozenset((m.upper() for m in methods))
         # sets of methods used for different types of endpoints
@@ -392,10 +392,10 @@ class APIManager(object):
             methods & frozenset(('GET', 'PATCH', 'DELETE', 'PUT'))
 
         # the base URL of the endpoints on which requests will be made
-        collection_endpoint = '/{0}'.format(collection_name)
+        collection_endpoint = '/{0}'.format(endpoint)
 
         # the name of the API, for use in creating the view and the blueprint
-        apiname = APIManager.APINAME_FORMAT.format(collection_name)
+        apiname = APIManager.APINAME_FORMAT.format(endpoint)
         # Prepend the universal preprocessors and postprocessors specified in
         # the constructor of this class.
         preprocessors_ = defaultdict(list)
@@ -424,12 +424,14 @@ class APIManager(object):
         # instance
         # TODO what should the second argument here be?
         # TODO should the url_prefix be specified here or in register_blueprint
+        if not url_prefix.endswith('/'):
+            url_prefix += '/'
         blueprint = Blueprint(blueprintname, __name__, url_prefix=url_prefix)
       
         # normalize collection_endpoint:
-        collection_endpoint.strip('/')        
+        collection_endpoint = collection_endpoint.strip('/')        
         if '<id>' not in collection_endpoint:
-            collection_endpoint = collection_endpoint.strip('/') + '/<id>'
+            collection_endpoint = collection_endpoint + '/<id>'
 
         # Now register all variations:
         # /api/person
