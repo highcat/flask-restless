@@ -980,7 +980,7 @@ class API(ModelView):
         """Returns a JSON representation of an instance of model with the
         specified name.
 
-        If ``instid`` is ``None``, this method returns the result of a search
+        If ``instid`` is ``None`` or ``'all'``, this method returns the result of a search
         with parameters specified in the query string of the request. If no
         search parameters are specified, this method returns all instances of
         the specified model.
@@ -990,7 +990,7 @@ class API(ModelView):
         method responds with :http:status:`404`.
 
         """
-        if instid is None:
+        if instid is None or instid == 'all':
             return self._search()
         for preprocessor in self.preprocessors['GET_SINGLE']:
             preprocessor(instance_id=instid)
@@ -1025,6 +1025,7 @@ class API(ModelView):
             preprocessor(instance_id=instid)
         inst = get_by(self.session, self.model, instid)
 
+        # TODO supress default - typical use case here
         # if not self.suppress_default_operation
         self.session.delete(inst)
         for sideeffect in self.sideeffects['DELETE']:
@@ -1142,7 +1143,7 @@ class API(ModelView):
 
     def patch(self, instid):
         """Updates the instance specified by ``instid`` of the named model, or
-        updates multiple instances if ``instid`` is ``None``.
+        updates multiple instances if ``instid`` is ``None`` or ``'all'``.
 
         The :attr:`flask.request.data` attribute will be parsed as a JSON
         object containing the mapping from field name to value to which to
@@ -1179,7 +1180,7 @@ class API(ModelView):
             return jsonify(message='Unable to decode data'), 400
         # Check if the request is to patch many instances of the current model.
 
-        patchmany = instid is None
+        patchmany = instid is None or instid == 'all'
         # Perform any necessary preprocessing.
         try:
             if patchmany:
