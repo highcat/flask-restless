@@ -438,23 +438,22 @@ class APIManager(object):
         # /api/person/1/private
         # /api/person/all/private
         # Order of registration matters.
+
+        # POST /api/person/all, /api/person/all/private
+        blueprint.add_url_rule(collection_endpoint.replace('<id>', 'all'),
+                               methods=no_instance_methods, view_func=api_view)
+        # GET+PATCH /api/person/all, /api/person/all/private
+        blueprint.add_url_rule(collection_endpoint.replace('<id>', 'all'),
+                               methods=possibly_empty_instance_methods,
+                               view_func=api_view)
         
         # GET+DELETE /api/person/12, /api/person/12/private
         blueprint.add_url_rule(collection_endpoint.replace('<id>', '<int:instid>'),
                                methods=instance_methods,
                                defaults={},
                                view_func=api_view)
-        # POST /api/person/all, /api/person/all/private
-        blueprint.add_url_rule(collection_endpoint.replace('<id>', 'all'),
-                               methods=no_instance_methods, view_func=api_view)
         # GET+PATCH /api/person/1, /api/person/1/private
         blueprint.add_url_rule(collection_endpoint.replace('<id>', '<int:instid>'),
-                               defaults={'instid': None},
-                               methods=possibly_empty_instance_methods,
-                               view_func=api_view)
-        # GET+PATCH /api/person/all, /api/person/all/private
-        blueprint.add_url_rule(collection_endpoint.replace('<id>', 'all'),
-                               defaults={'instid': None},
                                methods=possibly_empty_instance_methods,
                                view_func=api_view)
         if collection_endpoint.endswith('<id>'):
@@ -463,7 +462,6 @@ class APIManager(object):
                                    methods=no_instance_methods, view_func=api_view)
             # GET+PATCH /api/person
             blueprint.add_url_rule(collection_endpoint.replace('/<id>', ''),
-                                   defaults={'instid': None},
                                    methods=possibly_empty_instance_methods,
                                    view_func=api_view)
         # if function evaluation is allowed, add an endpoint at /api/eval/...

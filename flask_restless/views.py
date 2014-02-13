@@ -976,7 +976,7 @@ class API(ModelView):
 
         return jsonpify(result, headers=headers)
 
-    def get(self, instid):
+    def get(self, instid='all'):
         """Returns a JSON representation of an instance of model with the
         specified name.
 
@@ -990,8 +990,13 @@ class API(ModelView):
         method responds with :http:status:`404`.
 
         """
-        if instid is None or instid == 'all':
+        if instid == 'all':
             return self._search()
+        try:
+            instid = int(instid)
+        except ValueError:
+            abort(404)
+
         for preprocessor in self.preprocessors['GET_SINGLE']:
             preprocessor(instance_id=instid)
         # get the instance of the "main" model whose ID is instid
@@ -1004,7 +1009,7 @@ class API(ModelView):
             postprocessor(instance=instance, result=result)
         return jsonpify(result)
 
-    def delete(self, instid):
+    def delete(self, instid='all'):
         """Removes the specified instance of the model with the specified name
         from the database.
 
@@ -1021,6 +1026,11 @@ class API(ModelView):
            Added the `relationname` keyword argument.
 
         """
+        try:
+            instid = int(instid)
+        except ValueError:
+            abort(404)
+            
         for preprocessor in self.preprocessors['DELETE']:
             preprocessor(instance_id=instid)
         inst = get_by(self.session, self.model, instid)
@@ -1141,7 +1151,7 @@ class API(ModelView):
             current_app.logger.exception(str(exception))
             return jsonify(message=str(exception)), 400
 
-    def patch(self, instid):
+    def patch(self, instid='all'):
         """Updates the instance specified by ``instid`` of the named model, or
         updates multiple instances if ``instid`` is ``None`` or ``'all'``.
 
@@ -1166,6 +1176,11 @@ class API(ModelView):
            Added the `relationname` keyword argument.
 
         """
+        try:
+            instid = int(instid)
+        except ValueError:
+            abort(404)
+        
         content_type = request.headers.get('Content-Type', '')
         if not content_type.startswith('application/json'):
             msg = 'Request must have "Content-Type: application/json" header'
@@ -1180,7 +1195,7 @@ class API(ModelView):
             return jsonify(message='Unable to decode data'), 400
         # Check if the request is to patch many instances of the current model.
 
-        patchmany = instid is None or instid == 'all'
+        patchmany = instid == 'all'
         # Perform any necessary preprocessing.
         try:
             if patchmany:
