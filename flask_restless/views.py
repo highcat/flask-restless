@@ -976,7 +976,7 @@ class API(ModelView):
 
         return jsonpify(result, headers=headers)
 
-    def get(self, instid='all'):
+    def get(self, instid='all', **kw):
         """Returns a JSON representation of an instance of model with the
         specified name.
 
@@ -1009,7 +1009,7 @@ class API(ModelView):
             postprocessor(instance=instance, result=result)
         return jsonpify(result)
 
-    def delete(self, instid='all'):
+    def delete(self, instid='all', **kw):
         """Removes the specified instance of the model with the specified name
         from the database.
 
@@ -1046,7 +1046,7 @@ class API(ModelView):
             postprocessor(instance_id=instid)
         return jsonify(), 204
 
-    def post(self):
+    def post(self, **kw):
         """Creates a new instance of a given model based on request data.
 
         This function parses the string contained in
@@ -1151,7 +1151,7 @@ class API(ModelView):
             current_app.logger.exception(str(exception))
             return jsonify(message=str(exception)), 400
 
-    def patch(self, instid='all'):
+    def patch(self, instid='all', **kw):
         """Updates the instance specified by ``instid`` of the named model, or
         updates multiple instances if ``instid`` is ``None`` or ``'all'``.
 
