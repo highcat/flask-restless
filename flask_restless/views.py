@@ -1223,35 +1223,33 @@ class API(ModelView):
                     for field, value in data.items():
                         setattr(item, field, value)
                     num_modified += 1
+
+            if patchmany:
+                for sideeffect in self.sideeffects['PATCH_MANY']:
+                    query = sideeffect(query=query, data=data) or query
+                # TODO patch must return error or warning, if some of objects are not allowed?..
+            else:
+                exists_or_404(query)
+                for sideeffect in self.sideeffects['PATCH_SINGLE']:
+                    query = sideeffect(query=query, data=data) or query
+                instance = exists_or_404(query)
+            self.session.commit()
+    
+            # Perform any necessary postprocessing.
+            if patchmany:
+                result = dict(num_modified=num_modified)
+                for postprocessor in self.postprocessors['PATCH_MANY']:
+                    postprocessor(query=query, result=result,
+                                  search_params=search_params)
+            else:
+                result = self._instid_to_dict(instid)
+                for postprocessor in self.postprocessors['PATCH_SINGLE']:
+                    postprocessor(instance=instance, result=result)
+
         except self.validation_exceptions as exception:
-            current_app.logger.exception(str(exception))
             return self._handle_validation_exception(exception)
         except IntegrityError as exception:
-            current_app.logger.exception(str(exception))
             return jsonify(message=str(exception)), 400
-
-        if patchmany:
-            for sideeffect in self.sideeffects['PATCH_MANY']:
-                query = sideeffect(query=query, data=data) or query
-            # TODO patch must return error or warning, if some of objects are not allowed?..
-        else:
-            exists_or_404(query)
-            for sideeffect in self.sideeffects['PATCH_SINGLE']:
-                query = sideeffect(query=query, data=data) or query
-            instance = exists_or_404(query)
-
-        self.session.commit()
-
-        # Perform any necessary postprocessing.
-        if patchmany:
-            result = dict(num_modified=num_modified)
-            for postprocessor in self.postprocessors['PATCH_MANY']:
-                postprocessor(query=query, result=result,
-                              search_params=search_params)
-        else:
-            result = self._instid_to_dict(instid)
-            for postprocessor in self.postprocessors['PATCH_SINGLE']:
-                postprocessor(instance=instance, result=result)
 
         return jsonify(result)
 
