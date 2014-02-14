@@ -1,6 +1,6 @@
-# Flask-Restless #
+# Flask-Restmore #
 
-This is redesign fork of Flask-Restless.
+This is redesign fork of Flask-Restless: **Flask-Restmore**
 
 The ideology of the redesign:
 
@@ -20,6 +20,8 @@ Consequences:
    
  * Never create/update/delete relations automatically - it's too complex. Plain structure only.
    Relations can be unrolled in `GET` calls, though.
+
+ * Use forms, permission control, data format modifications easily.
 
 
 ## Introduction ##

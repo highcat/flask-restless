@@ -29,6 +29,7 @@ from sqlalchemy.orm.util import class_mapper
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import _BinaryExpression
 from sqlalchemy.sql.expression import ColumnElement
+from flask import abort
 
 #: Names of attributes which should definitely not be considered relations when
 #: dynamically computing a list of relations of a SQLAlchemy model.
@@ -416,7 +417,7 @@ def evaluate_functions(session, model, functions):
     return dict(zip(funcnames, evaluated))
 
 
-def query_by_primary_key(session, model, primary_key_value):
+def query_by_pk(session, model, primary_key_value):
     """Returns a SQLAlchemy query object containing the result of querying
     `model` for instances whose primary key has the value `primary_key_value`.
 
@@ -429,12 +430,17 @@ def query_by_primary_key(session, model, primary_key_value):
     return query.filter_by(**{pk_name: primary_key_value})
 
 
+def exists_or_404(query):
+    if not query.first():
+        abort(404)
+    return query.first()
+    
 def get_by(session, model, primary_key_value):
     """Returns the first instance of `model` whose primary key has the value
     `primary_key_value`, or ``None`` if no such instance exists.
 
     """
-    return query_by_primary_key(session, model, primary_key_value).first()
+    return query_by_pk(session, model, primary_key_value).first()
 
 
 def get_or_create(session, model, attrs):

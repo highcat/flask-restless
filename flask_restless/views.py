@@ -48,14 +48,13 @@ from .helpers import get_or_create
 from .helpers import get_related_model
 from .helpers import get_relations
 from .helpers import has_field
-from .helpers import is_like_list
 from .helpers import partition
-from .helpers import primary_key_name
-from .helpers import query_by_primary_key
+from .helpers import query_by_pk
 from .helpers import session_query
 from .helpers import strings_to_dates
 from .helpers import to_dict
 from .helpers import upper_keys
+from .helpers import exists_or_404
 from werkzeug.exceptions import BadRequest
 
 from .search import create_query
@@ -915,30 +914,28 @@ class API(ModelView):
         responses, see :ref:`searchformat`.
 
         """
-        # try to get search query from the request query parameters
-        try:
-            search_params = json.loads(request.args.get('q', '{}'))
-        except (TypeError, ValueError, OverflowError) as exception:
-            current_app.logger.exception(str(exception))
-            return jsonify(message='Unable to decode data'), 400
+        # # try to get search query from the request query parameters
+        # try:
+        #     search_params = json.loads(request.args.get('q', '{}'))
+        # except (TypeError, ValueError, OverflowError) as exception:
+        #     current_app.logger.exception(str(exception))
+        #     return jsonify(message='Unable to decode data'), 400
+        search_params = {}
 
         for preprocessor in self.preprocessors['GET_MANY']:
             preprocessor(search_params=search_params)
 
         # perform a filtered search
         try:
-            result = search(self.session, self.model, search_params)
+            query = search(self.session, self.model, search_params)
         except NoResultFound:
             return jsonify(message='No result found'), 400
-        except MultipleResultsFound:
-            return jsonify(message='Multiple results found'), 400
         except Exception as exception:
             current_app.logger.exception(str(exception))
             return jsonify(message='Unable to construct query'), 400
 
-        # FIXME
         for sideeffect in self.sideeffects['GET_MANY']:
-            sideeffect(query=result)
+            query = sideeffect(query=query) or query
 
         # create a placeholder for the relations of the returned models
         relations = frozenset(get_relations(self.model))
@@ -952,32 +949,13 @@ class API(ModelView):
         deep = dict((r, {}) for r in relations)
 
         # for security purposes, don't transmit list as top-level JSON
-        if isinstance(result, Query):
-            result = self._paginated(result, deep)
-            # Create the Link header.
-            #
-            # TODO We are already calling self._compute_results_per_page() once
-            # in _paginated(); don't compute it again here.
-            page, last_page = result['page'], result['total_pages']
-            linkstring = create_link_string(page, last_page,
-                                            self._compute_results_per_page())
-            headers = dict(Link=linkstring)
-        else:
-            primary_key = primary_key_name(result)
-            result = to_dict(result, deep, exclude=self.exclude_columns,
-                             exclude_relations=self.exclude_relations,
-                             include=self.include_columns,
-                             include_relations=self.include_relations,
-                             include_methods=self.include_methods)
-            # The URL at which a client can access the instance matching this
-            # search query.
-            url = '{0}/{1}'.format(request.base_url, result[primary_key])
-            headers = dict(Location=url)
+        result = self._paginated(query, deep)
+        page, last_page = result['page'], result['total_pages']
 
         for postprocessor in self.postprocessors['GET_MANY']:
-            postprocessor(result=result, search_params=search_params) # TODO pass query for simmetry
+            postprocessor(query=query, result=result, search_params=search_params) # TODO pass query for simmetry
 
-        return jsonpify(result, headers=headers)
+        return jsonpify(result)
 
     def get(self, instid='all', **kw):
         """Returns a JSON representation of an instance of model with the
@@ -1003,11 +981,12 @@ class API(ModelView):
         for preprocessor in self.preprocessors['GET_SINGLE']:
             preprocessor(instance_id=instid)
         # get the instance of the "main" model whose ID is instid
-        instance = get_by(self.session, self.model, instid)
-        if instance is None:
-            abort(404)
+        query = query_by_pk(self.session, self.model, instid)
+
+        exists_or_404(query)
         for sideeffect in self.sideeffects['GET_SINGLE']:
-            sideeffect(instance=instance)
+            sideeffect(query=query)
+        instance = exists_or_404(query)
 
         result = self._inst_to_dict(instance)
         for postprocessor in self.postprocessors['GET_SINGLE']:
@@ -1035,16 +1014,17 @@ class API(ModelView):
             instid = int(instid)
         except ValueError:
             abort(404)
-            
+
         for preprocessor in self.preprocessors['DELETE']:
             preprocessor(instance_id=instid)
-        inst = get_by(self.session, self.model, instid)
 
-        # TODO supress default - typical use case here
-        # if not self.suppress_default_operation
-        self.session.delete(inst)
+        query = query_by_pk(self.session, self.model, instid)
+        exists_or_404(query)
         for sideeffect in self.sideeffects['DELETE']:
-            sideeffect(instance=inst, instance_id=instid)
+            query = sideeffect(query=query) or query
+        instance = exists_or_404(query)
+        # TODO supress default - typical use case here
+        self.session.delete(instance)
         self.session.commit()
 
         for postprocessor in self.postprocessors['DELETE']:
@@ -1137,19 +1117,11 @@ class API(ModelView):
                 sideeffect(instance=instance)
             self.session.commit()
             result = self._inst_to_dict(instance)
-            primary_key = str(result[primary_key_name(instance)])
-
-            # The URL at which a client can access the newly created instance
-            # of the model.
-
-            url = '{0}/{1}'.format(request.base_url, primary_key)
-            # Provide that URL in the Location header in the response.
-            headers = dict(Location=url)
 
             for postprocessor in self.postprocessors['POST']:
                 postprocessor(instance=instance, result=result)
 
-            return jsonify(headers=headers, **result), 201
+            return jsonify(**result), 201
         except self.validation_exceptions as exception:
             return self._handle_validation_exception(exception)
         except IntegrityError as exception:
@@ -1230,8 +1202,8 @@ class API(ModelView):
                 return jsonify(message='Unable to construct query'), 400
         else:
             # create a SQLAlchemy Query which has exactly the specified row
-            query = query_by_primary_key(self.session, self.model, instid)
-            if query.count() == 0:
+            query = query_by_pk(self.session, self.model, instid)
+            if not query.first():
                 abort(404)
             assert query.count() == 1, 'Multiple rows with same ID'
 
@@ -1258,15 +1230,18 @@ class API(ModelView):
             current_app.logger.exception(str(exception))
             return jsonify(message=str(exception)), 400
 
-        # Side effects
         if patchmany:
             for sideeffect in self.sideeffects['PATCH_MANY']:
-                sideeffect(query=query)
-        else:                
+                query = sideeffect(query=query, data=data) or query
+            # TODO patch must return error or warning, if some of objects are not allowed?..
+        else:
+            exists_or_404(query)
             for sideeffect in self.sideeffects['PATCH_SINGLE']:
-                sideeffect(instance=query[0])
+                query = sideeffect(query=query, data=data) or query
+            instance = exists_or_404(query)
+
         self.session.commit()
-        
+
         # Perform any necessary postprocessing.
         if patchmany:
             result = dict(num_modified=num_modified)
@@ -1276,7 +1251,7 @@ class API(ModelView):
         else:
             result = self._instid_to_dict(instid)
             for postprocessor in self.postprocessors['PATCH_SINGLE']:
-                postprocessor(instance=query[0], result=result)
+                postprocessor(instance=instance, result=result)
 
         return jsonify(result)
 
