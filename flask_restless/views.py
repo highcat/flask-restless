@@ -1085,12 +1085,11 @@ class API(ModelView):
 
         # Getting the list of relations that will be added later
         cols = get_columns(self.model)
-        relations = get_relations(self.model)
 
         # Looking for what we're going to set on the model right now
         colkeys = cols.keys()
         paramkeys = params.keys()
-        props = set(colkeys).intersection(paramkeys).difference(relations)
+        props = set(colkeys).intersection(paramkeys)
 
         # Special case: if there are any dates, convert the string form of the
         # date into an instance of the Python ``datetime`` object.
@@ -1199,8 +1198,7 @@ class API(ModelView):
                 abort(404)
             assert query.count() == 1, 'Multiple rows with same ID'
 
-        relations = self._update_relations(query, data) # TODO remove it
-        field_list = frozenset(data) ^ relations
+        field_list = frozenset(data)
         data = dict((field, data[field]) for field in field_list)
 
         # Special case: if there are any dates, convert the string form of the
