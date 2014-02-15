@@ -86,6 +86,11 @@ class ProcessingException(HTTPException):
         self.description = description
 
 
+def SkipEffect(**kw):
+    """Sideeffect which causes skip of common DB operaion"""
+    pass
+
+
 def create_link_string(page, last_page, per_page):
     """Returns a string representing the value of the ``Link`` header.
 
@@ -985,7 +990,7 @@ class API(ModelView):
 
         exists_or_404(query)
         for sideeffect in self.sideeffects['GET_SINGLE']:
-            sideeffect(query=query)
+            query = sideeffect(query=query) or query
         instance = exists_or_404(query)
 
         result = self._inst_to_dict(instance)
@@ -1023,8 +1028,9 @@ class API(ModelView):
         for sideeffect in self.sideeffects['DELETE']:
             query = sideeffect(query=query) or query
         instance = exists_or_404(query)
-        # TODO supress default - typical use case here
-        self.session.delete(instance)
+
+        if SkipEffect not in self.sideeffects['DELETE']:
+            self.session.delete(instance)
         self.session.commit()
 
         for postprocessor in self.postprocessors['DELETE']:
@@ -1091,30 +1097,16 @@ class API(ModelView):
         params = strings_to_dates(self.model, params)
 
         try:
-            # Instantiate the model with the parameters.
-            modelargs = dict([(i, params[i]) for i in props])
-            instance = self.model(**modelargs)
+            instance = None
+            if SkipEffect not in self.sideeffects['POST']:
+                # Instantiate the model with the parameters.
+                modelargs = dict([(i, params[i]) for i in props])
+                instance = self.model(**modelargs)
+                # add the created model to the session
+                self.session.add(instance)
 
-            # Handling relations, a single level is allowed
-            for col in set(relations).intersection(paramkeys):
-                submodel = get_related_model(self.model, col)
-
-                if type(params[col]) == list:
-                    # model has several related objects
-                    for subparams in params[col]:
-                        subinst = get_or_create(self.session, submodel,
-                                                subparams)
-                        getattr(instance, col).append(subinst)
-                else:
-                    # model has single related object
-                    subinst = get_or_create(self.session, submodel,
-                                            params[col])
-                    setattr(instance, col, subinst)
-
-            # add the created model to the session
-            self.session.add(instance)
             for sideeffect in self.sideeffects['POST']:
-                sideeffect(instance=instance)
+                instance = sideeffect(instance=instance) or instance
             self.session.commit()
             result = self._inst_to_dict(instance)
 
@@ -1207,7 +1199,7 @@ class API(ModelView):
                 abort(404)
             assert query.count() == 1, 'Multiple rows with same ID'
 
-        relations = self._update_relations(query, data)
+        relations = self._update_relations(query, data) # TODO remove it
         field_list = frozenset(data) ^ relations
         data = dict((field, data[field]) for field in field_list)
 
@@ -1216,13 +1208,16 @@ class API(ModelView):
         data = strings_to_dates(self.model, data)
 
         try:
-            # Let's update all instances present in the query
-            num_modified = 0
-            if data:
-                for item in query.all():
-                    for field, value in data.items():
-                        setattr(item, field, value)
-                    num_modified += 1
+            if SkipEffect not in (self.sideeffects['PATCH_MANY']
+                                  if patchmany
+                                  else self.sideeffects['PATCH_SINGLE']):
+                # Let's update all instances present in the query
+                num_modified = 0
+                if data:
+                    for item in query.all():
+                        for field, value in data.items():
+                            setattr(item, field, value)
+                        num_modified += 1
 
             if patchmany:
                 for sideeffect in self.sideeffects['PATCH_MANY']:
