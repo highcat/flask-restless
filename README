@@ -1,6 +1,6 @@
 # Flask-Restmore #
 
-This is redesign fork of Flask-Restless: **Flask-Restmore**
+This is redesign (or complete rewrite) fork of Flask-Restless: **Flask-Restmore**
 
 The ideology of the redesign:
 
@@ -8,20 +8,17 @@ The ideology of the redesign:
 
 Consequences:
 
- * Main storage backend is SQLAlchemy.
+ * Main data source is SQLAlchemy. (Possible support for others.)
 
- * API methods can cause complex side effects.
+ * API methods can cause complex side effects. Within or without transactions or DB row locks.
 
- * It should be possible to implement any RESTful API design with current framework.
-   Design should not depend on framework constraints.
+ * Nested resources
+ 
+ * Simple code, easy to fork & patch
+ 
+ * Form validation (with any framework), permission control.
 
- * Control over transactions, `DELETE` method (commonly it sets `deleted` flag, not removes an object),
-   database row locking.
-   
- * Never create/update/delete relations automatically - it's too complex. Plain structure only.
-   Relations can be unrolled in `GET` calls, though.
-
- * Use forms, permission control, data format modifications easily.
+ * some more features
 
 
 ## Introduction ##
