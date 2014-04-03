@@ -804,17 +804,16 @@ class API(ModelView):
                 page_num = 1
             if page_num <= 0:
                 page_num = 1
-
+            total_pages = int(math.ceil(float(num_results) / results_per_page))                
+            if page_num > total_pages:
+                page_num = total_pages
             start = (page_num - 1) * results_per_page
             end = min(num_results, start + results_per_page)
-            total_pages = int(math.ceil(float(num_results) / results_per_page))
         else:
             page_num = 1
             start = 0
             end = num_results
             total_pages = 1
-        if page_num > total_pages:
-            page_num = total_pages
             
         objects = [to_dict(x, deep, exclude=self.exclude_columns,
                            exclude_relations=self.exclude_relations,
