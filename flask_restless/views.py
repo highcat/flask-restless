@@ -802,11 +802,11 @@ class API(ModelView):
                 page_num = int(request.args.get('page', 1))
             except ValueError:
                 page_num = 1
-            if page_num <= 0:
-                page_num = 1
             total_pages = int(math.ceil(float(num_results) / results_per_page))                
             if page_num > total_pages:
                 page_num = total_pages
+            if page_num <= 0:
+                page_num = 1
             start = (page_num - 1) * results_per_page
             end = min(num_results, start + results_per_page)
         else:
