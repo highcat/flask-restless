@@ -996,7 +996,7 @@ class API(ModelView):
         # get the instance of the "main" model whose ID is instid
         query = query_by_pk(self.session, self.model, instid)
 
-        exists_or_404(query)
+        # exists_or_404(query) # allow sideeffects to change query, don't check existence here
         for sideeffect in self.sideeffects['GET_SINGLE']:
             query = sideeffect(query=query) or query
         instance = exists_or_404(query)
@@ -1032,7 +1032,7 @@ class API(ModelView):
             preprocessor(instance_id=instid)
 
         query = query_by_pk(self.session, self.model, instid)
-        exists_or_404(query)
+        # exists_or_404(query) # allow sideeffects to change query, don't check existence here
         for sideeffect in self.sideeffects['DELETE']:
             query = sideeffect(query=query) or query
         instance = exists_or_404(query)
@@ -1230,7 +1230,7 @@ class API(ModelView):
                     query = sideeffect(query=query, data=data) or query
                 # TODO patch must return error or warning, if some of objects are not allowed?..
             else:
-                exists_or_404(query)
+                # exists_or_404(query) # allow sideeffects to change query, don't check existence here
                 for sideeffect in self.sideeffects['PATCH_SINGLE']:
                     query = sideeffect(query=query, data=data) or query
                 instance = exists_or_404(query)
